@@ -66,14 +66,21 @@ export async function markFailed(id: string, error: string): Promise<EmailRow | 
   return rows[0] ?? null;
 }
 
-/** Move a still-scheduled email to a later time (used when the hourly limit is reached). */
+/**
+ * Move an unsent email to a later time (used when the hourly limit is reached).
+ * Also clears a STALE 'sending' state: the worker only gets here for a 'sending' row after
+ * its lock has expired (a worker died mid-send), so handing it back to 'scheduled' is safe
+ * and keeps the dashboard honest instead of showing "Sending..." for an hour.
+ */
 export async function reschedule(id: string, runAt: Date, dueToRateLimit: boolean): Promise<void> {
   await query(
     `UPDATE emails
         SET scheduled_at = $2,
             rate_limited_count = rate_limited_count + $3,
+            status = 'scheduled',
+            locked_at = NULL,
             updated_at = now()
-      WHERE id = $1 AND status = 'scheduled'`,
+      WHERE id = $1 AND status IN ('scheduled', 'sending')`,
     [id, runAt, dueToRateLimit ? 1 : 0],
   );
 }
