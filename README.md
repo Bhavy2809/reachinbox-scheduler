@@ -1,5 +1,7 @@
 # ReachInbox: Full-stack Email Job Scheduler
 
+**Live demo:** https://reachinbox-scheduler-xi-five.vercel.app · queue dashboard: https://reachinbox-scheduler-xi-five.vercel.app/admin/queues (after login)
+
 This service schedules emails and sends them at a set time, with a dashboard to manage them. It is built for the ReachInbox SDE intern assignment.
 
 - **Backend:** TypeScript, Express, BullMQ, Redis, PostgreSQL, Ethereal SMTP, Elasticsearch, Slack OAuth
@@ -251,3 +253,23 @@ Bull Board is at **http://localhost:4000/admin/queues**, for logged-in users onl
 4. **Restart:** stop the worker and API with Ctrl+C before the start time, then start both again. The emails still go out at their scheduled times, and nothing is sent twice. Check the Sent tab and the Ethereal preview links.
 5. **Rate limit:** the limit of 5 means emails 6–8 move to the next hour (marked "rate-limited"), and **Slack** receives one alert.
 6. *(Bonus)* `npm run load-test -- 1000 50 you@gmail.com`, then show Bull Board: 50 sending and the rest delayed into later hours.
+
+---
+
+## 6. Deployment (how the live demo runs)
+
+| Piece | Where | Notes |
+|---|---|---|
+| Frontend (Next.js) | Vercel, root `frontend/` | `NEXT_PUBLIC_API_URL=same-origin`, `BACKEND_ORIGIN=<railway url>` |
+| API + BullMQ worker | Railway, root `backend/` | `RUN_WORKER_IN_API=true` (one always-on service; split into two services by running `npm run start:worker` separately) |
+| PostgreSQL, Redis | Railway (private network) | `DATABASE_URL=${{Postgres.DATABASE_URL}}`, `REDIS_URL=${{Redis.REDIS_URL}}`; ioredis uses `family: 0` for Railway's IPv6 network |
+| Elasticsearch | not hosted | no free managed ES; the live demo uses the built-in SQL search fallback (ES is shown working locally in the demo video) |
+
+**One origin for the browser.** Next.js rewrites `/auth/*`, `/api/*` and `/admin/*` to the Railway backend
+(`frontend/next.config.mjs`). The browser only ever talks to the Vercel domain, so the session cookie is first-party
+(no third-party-cookie blocking) and the Google/Slack OAuth redirect URIs all live on that one domain:
+
+- Google: `https://<vercel-domain>/auth/google/callback`
+- Slack: `https://<vercel-domain>/api/slack/callback`
+
+The worker never sleeps (Railway, not a free tier that idles), because a sleeping process cannot send a scheduled email on time.
