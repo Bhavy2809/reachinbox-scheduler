@@ -10,7 +10,10 @@ import type {
   User,
 } from './types';
 
-export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
+// Local dev: the browser calls the backend directly (http://localhost:4000).
+// Production: set NEXT_PUBLIC_API_URL=same-origin and Next proxies /auth, /api, /admin to the backend.
+const RAW_API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
+export const API_URL = RAW_API_URL === 'same-origin' ? '' : RAW_API_URL.replace(/\/$/, '');
 
 export class ApiError extends Error {
   constructor(

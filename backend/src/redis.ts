@@ -7,7 +7,8 @@ import { logger } from './utils/logger';
  * (blocking commands must wait forever instead of erroring).
  */
 export function createRedisConnection(name: string): Redis {
-  const conn = new IORedis(config.redisUrl, { maxRetriesPerRequest: null });
+  // family: 0 = resolve both IPv4 and IPv6 (Railway's private network is IPv6-only)
+  const conn = new IORedis(config.redisUrl, { maxRetriesPerRequest: null, family: 0 });
   conn.on('error', (err) => logger.error(`Redis (${name}) error`, err.message));
   return conn;
 }
