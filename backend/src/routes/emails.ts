@@ -2,8 +2,9 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { requireAuth } from '../auth/session';
 import { config } from '../config';
-import { countByStatus, listEmailsForUser, STATUS_GROUPS } from '../repositories/emailRepo';
-import { listSenders } from '../repositories/senderRepo';
+import { countByStatus, findEmailById, listEmailsForUser, STATUS_GROUPS } from '../repositories/emailRepo';
+import { findSenderById, listSenders } from '../repositories/senderRepo';
+import { htmlToText } from '../services/mailer';
 import { getHourlyUsage } from '../services/rateLimiter';
 import { scheduleCampaign } from '../services/scheduler';
 import { searchBackend, searchEmails } from '../services/search';
@@ -33,6 +34,7 @@ function toDto(e: EmailRow) {
     campaignId: e.campaign_id,
     to: e.to_email,
     subject: e.subject,
+    preview: htmlToText(e.body).replace(/\s+/g, ' ').slice(0, 140),
     status: e.status,
     scheduledAt: e.scheduled_at,
     sentAt: e.sent_at,
@@ -125,6 +127,24 @@ emailsRouter.get('/stats', async (req, res, next) => {
         concurrency: config.worker.concurrency,
       },
       searchBackend: searchBackend(),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/emails/:id - full email for the detail view
+emailsRouter.get('/:id', async (req, res, next) => {
+  try {
+    if (!/^\d+$/.test(req.params.id)) return res.status(400).json({ error: 'Invalid id' });
+    const email = await findEmailById(req.params.id);
+    if (!email || email.user_id !== req.user!.id) return res.status(404).json({ error: 'Email not found' });
+    const sender = await findSenderById(email.sender_id);
+    res.json({
+      ...toDto(email),
+      body: email.body,
+      fromName: sender?.from_name ?? null,
+      fromAddress: sender?.smtp_user ?? null,
     });
   } catch (err) {
     next(err);

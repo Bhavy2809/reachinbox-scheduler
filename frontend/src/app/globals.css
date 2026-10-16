@@ -3,5 +3,34 @@
 @tailwind utilities;
 
 body {
-  @apply bg-gray-50 text-gray-900 antialiased;
+  @apply bg-white text-gray-900 antialiased;
+}
+
+/* Rich-text editor content (contentEditable) */
+.editor-content:empty::before {
+  content: attr(data-placeholder);
+  @apply pointer-events-none text-gray-400;
+}
+.editor-content ul {
+  @apply list-disc pl-6;
+}
+.editor-content ol {
+  @apply list-decimal pl-6;
+}
+.editor-content blockquote {
+  @apply my-2 border-l-2 border-gray-300 pl-3 text-gray-600;
+}
+
+/* Rendered email body in the detail view */
+.email-body p {
+  @apply my-2;
+}
+.email-body ul {
+  @apply list-disc pl-6;
+}
+.email-body ol {
+  @apply list-decimal pl-6;
+}
+.email-body blockquote {
+  @apply my-3 border-l-2 border-gray-300 pl-3 text-gray-600;
 }

@@ -93,6 +93,21 @@ function transporterFor(sender: SenderRow): Transporter {
   return t;
 }
 
+/** Very small HTML -> text conversion for the plain-text part and list previews. */
+export function htmlToText(html: string): string {
+  return html
+    .replace(/<(br|\/p|\/div|\/li|\/h[1-6])\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 export interface SendResult {
   messageId: string;
   previewUrl: string | null;
@@ -110,7 +125,10 @@ export async function sendEmail(
     from: `"${sender.from_name}" <${sender.smtp_user}>`,
     to: msg.to,
     subject: msg.subject,
-    text: msg.body,
+    // The compose editor produces HTML; send it as HTML with a plain-text fallback.
+    ...(/<[a-z][\s\S]*>/i.test(msg.body)
+      ? { html: msg.body, text: htmlToText(msg.body) }
+      : { text: msg.body }), // plain-text bodies (e.g. load test) stay plain text
     messageId,
   });
   const preview = nodemailer.getTestMessageUrl(info);

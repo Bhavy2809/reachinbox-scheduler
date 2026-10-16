@@ -1,22 +1,32 @@
 'use client';
 
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Suspense, useEffect, useState } from 'react';
-import { ComposeModal } from '@/components/ComposeModal';
-import { EmailTable } from '@/components/EmailTable';
-import { Header } from '@/components/Header';
-import { SenderUsage } from '@/components/SenderUsage';
-import { SlackCard } from '@/components/SlackCard';
-import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Field';
+import { useEffect, useRef, useState } from 'react';
+import { useDashboard } from '@/components/DashboardContext';
+import { EmailRow } from '@/components/EmailRow';
+import { FilterIcon, RefreshIcon, SearchIcon } from '@/components/Icons';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { Spinner } from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/Toast';
-import { useAuth } from '@/hooks/useAuth';
 import { usePolling } from '@/hooks/usePolling';
 import { api } from '@/lib/api';
 import type { EmailItem, Tab } from '@/lib/types';
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 50;
+
+type Filter = 'all' | 'rate_limited' | 'sent' | 'failed';
+const FILTERS: Record<Tab, { key: Filter; label: string }[]> = {
+  scheduled: [
+    { key: 'all', label: 'All scheduled' },
+    { key: 'rate_limited', label: 'Rate limited only' },
+  ],
+  sent: [
+    { key: 'all', label: 'All' },
+    { key: 'sent', label: 'Sent' },
+    { key: 'failed', label: 'Failed' },
+  ],
+};
 
 const SLACK_MESSAGES: Record<string, ['success' | 'error', string]> = {
   connected: ['success', 'Slack connected - rate-limit alerts are on'],
@@ -26,17 +36,26 @@ const SLACK_MESSAGES: Record<string, ['success' | 'error', string]> = {
   error: ['error', 'Slack connection failed'],
 };
 
-function Dashboard() {
-  const { user, checking, logout } = useAuth();
-  const toast = useToast();
-  const router = useRouter();
-  const params = useSearchParams();
+function applyFilter(items: EmailItem[], f: Filter) {
+  if (f === 'rate_limited') return items.filter((e) => e.rateLimitedCount > 0);
+  if (f === 'sent' || f === 'failed') return items.filter((e) => e.status === f);
+  return items;
+}
 
-  const [tab, setTab] = useState<Tab>('scheduled');
-  const [page, setPage] = useState(1);
-  const [composeOpen, setComposeOpen] = useState(false);
+export default function InboxPage() {
+  const params = useSearchParams();
+  const router = useRouter();
+  const toast = useToast();
+  const { refreshStats } = useDashboard();
+  const tab: Tab = params.get('tab') === 'sent' ? 'sent' : 'scheduled';
+
   const [query, setQuery] = useState('');
   const [debounced, setDebounced] = useState('');
+  const [limit, setLimit] = useState(PAGE_SIZE);
+  const [filter, setFilter] = useState<Filter>('all');
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [spinning, setSpinning] = useState(false);
+  const filterRef = useRef<HTMLDivElement>(null);
 
   // Show the result of the Slack OAuth redirect once, then clean the URL.
   useEffect(() => {
@@ -48,155 +67,124 @@ function Dashboard() {
   }, [params, router, toast]);
 
   useEffect(() => {
+    setLimit(PAGE_SIZE);
+    setFilter('all');
+  }, [tab]);
+
+  useEffect(() => {
     const id = setTimeout(() => setDebounced(query.trim()), 300);
     return () => clearTimeout(id);
   }, [query]);
 
-  const ready = Boolean(user);
-  const emails = usePolling(() => (ready ? api.listEmails(tab, page, PAGE_SIZE) : Promise.resolve(null)), [tab, page, ready]);
-  const stats = usePolling(() => (ready ? api.stats() : Promise.resolve(null)), [ready], 5000);
-  const search = usePolling(
-    () => (ready && debounced ? api.search(debounced) : Promise.resolve(null)),
-    [debounced, ready],
-    10_000,
-  );
+  useEffect(() => {
+    if (!filterOpen) return;
+    const close = (e: MouseEvent) => !filterRef.current?.contains(e.target as Node) && setFilterOpen(false);
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [filterOpen]);
 
-  if (checking || !user) {
-    return (
-      <div className="flex min-h-screen items-center justify-center text-gray-500">
-        <Spinner />
-      </div>
-    );
-  }
-
-  const counts = stats.data?.counts;
-  const tabs: { key: Tab; label: string; count?: number }[] = [
-    { key: 'scheduled', label: 'Scheduled Emails', count: counts ? counts.scheduled + counts.sending : undefined },
-    { key: 'sent', label: 'Sent Emails', count: counts ? counts.sent + counts.failed : undefined },
-  ];
+  const list = usePolling(() => api.listEmails(tab, 1, limit), [tab, limit]);
+  const search = usePolling(() => (debounced ? api.search(debounced) : Promise.resolve(null)), [debounced], 10_000);
 
   const searching = debounced.length > 0;
-  const items: EmailItem[] = searching ? search.data?.items ?? [] : emails.data?.items ?? [];
-  const totalPages = emails.data ? Math.max(1, Math.ceil(emails.data.total / PAGE_SIZE)) : 1;
+  const raw = searching ? search.data?.items ?? [] : list.data?.items ?? [];
+  const items = applyFilter(raw, filter);
+  const loading = searching ? search.loading : list.loading;
+  const error = searching ? search.error : list.error;
 
-  const refreshAll = () => {
-    void emails.refresh();
-    void stats.refresh();
-  };
+  async function refresh() {
+    setSpinning(true);
+    await Promise.all([list.refresh(), search.refresh(), refreshStats()]);
+    setTimeout(() => setSpinning(false), 400);
+  }
 
   return (
-    <div className="min-h-screen">
-      <Header user={user} onLogout={logout} />
+    <div className="flex min-h-full flex-col">
+      {/* Toolbar */}
+      <div className="sticky top-0 z-20 flex items-center gap-3 bg-white px-4 pb-3 pt-4">
+        <label className="flex h-9 flex-1 items-center gap-2 rounded-full bg-surface-100 px-4 text-gray-400 focus-within:ring-2 focus-within:ring-brand-200">
+          <SearchIcon width={15} height={15} />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search"
+            className="h-full flex-1 bg-transparent text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none"
+          />
+          {searching && search.data && (
+            <span className="shrink-0 text-2xs text-gray-400">via {search.data.backend === 'elasticsearch' ? 'Elasticsearch' : 'SQL'}</span>
+          )}
+        </label>
 
-      <main className="mx-auto grid max-w-7xl gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[1fr_300px]">
-        <section className="min-w-0">
-          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h1 className="text-xl font-semibold text-gray-900">Email scheduler</h1>
-              <p className="text-sm text-gray-500">Updates live as the worker sends.</p>
-            </div>
-            <Button
-              onClick={() => setComposeOpen(true)}
-              icon={
-                <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                  <path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
-                </svg>
-              }
-            >
-              Compose New Email
-            </Button>
-          </div>
-
-          <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
-            <div className="flex flex-col gap-3 border-b border-gray-200 px-4 pt-3 sm:flex-row sm:items-end sm:justify-between">
-              <nav className="flex gap-6" aria-label="Tabs">
-                {tabs.map((t) => (
-                  <button
-                    key={t.key}
-                    onClick={() => {
-                      setTab(t.key);
-                      setPage(1);
-                      setQuery('');
-                    }}
-                    className={`-mb-px border-b-2 pb-3 text-sm font-medium ${
-                      tab === t.key && !searching
-                        ? 'border-brand-600 text-brand-700'
-                        : 'border-transparent text-gray-500 hover:text-gray-700'
-                    }`}
-                  >
-                    {t.label}
-                    {t.count !== undefined && (
-                      <span className="ml-2 rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">{t.count}</span>
-                    )}
-                  </button>
-                ))}
-              </nav>
-              <div className="pb-3 sm:w-64">
-                <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search email, subject, body..." />
-              </div>
-            </div>
-
-            {searching && (
-              <p className="border-b border-gray-100 bg-gray-50 px-6 py-2 text-xs text-gray-500">
-                {search.loading ? 'Searching...' : `${items.length} result${items.length === 1 ? '' : 's'} for "${debounced}"`}
-                {search.data && ` · via ${search.data.backend === 'elasticsearch' ? 'Elasticsearch' : 'SQL fallback'}`}
-              </p>
-            )}
-
-            <EmailTable
-              tab={searching ? 'scheduled' : tab}
-              items={items}
-              loading={searching ? search.loading : emails.loading}
-              error={searching ? search.error : emails.error}
-              emptyAction={
-                <Button variant="secondary" onClick={() => setComposeOpen(true)}>
-                  Compose New Email
-                </Button>
-              }
-            />
-
-            {!searching && emails.data && emails.data.total > PAGE_SIZE && (
-              <div className="flex items-center justify-between border-t border-gray-100 px-6 py-3 text-sm text-gray-600">
-                <span>
-                  Page {page} of {totalPages} · {emails.data.total} emails
-                </span>
-                <div className="flex gap-2">
-                  <Button size="sm" variant="secondary" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-                    Previous
-                  </Button>
-                  <Button size="sm" variant="secondary" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
-                    Next
-                  </Button>
-                </div>
-              </div>
-            )}
-          </div>
-        </section>
-
-        <aside className="space-y-4">
-          <SenderUsage stats={stats.data} />
-          <SlackCard />
-          <a
-            href={api.queueDashboardUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="block rounded-xl border border-gray-200 bg-white p-4 hover:border-brand-500"
+        <div ref={filterRef} className="relative">
+          <button
+            onClick={() => setFilterOpen((o) => !o)}
+            className={`rounded-lg p-2 transition hover:bg-surface-100 ${filter !== 'all' ? 'text-brand-600' : 'text-gray-500'}`}
+            aria-label="Filter"
           >
-            <h3 className="text-sm font-semibold text-gray-900">Queue dashboard ↗</h3>
-            <p className="mt-1 text-xs text-gray-500">Live BullMQ view: delayed, active, completed and failed jobs.</p>
-          </a>
-        </aside>
-      </main>
+            <FilterIcon />
+          </button>
+          {filterOpen && (
+            <div className="absolute right-0 top-full z-30 mt-1 w-44 overflow-hidden rounded-xl border border-gray-100 bg-white py-1 shadow-pop">
+              {FILTERS[tab].map((f) => (
+                <button
+                  key={f.key}
+                  onClick={() => {
+                    setFilter(f.key);
+                    setFilterOpen(false);
+                  }}
+                  className={`block w-full px-3 py-2 text-left text-sm hover:bg-surface-100 ${filter === f.key ? 'font-medium text-brand-700' : 'text-gray-700'}`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
 
-      <ComposeModal open={composeOpen} onClose={() => setComposeOpen(false)} onScheduled={refreshAll} />
+        <button onClick={() => void refresh()} className="rounded-lg p-2 text-gray-500 transition hover:bg-surface-100" aria-label="Refresh">
+          <RefreshIcon className={spinning ? 'animate-spin' : ''} />
+        </button>
+      </div>
+
+      {/* List */}
+      {loading ? (
+        <div className="flex items-center justify-center gap-3 py-24 text-sm text-gray-400">
+          <Spinner /> Loading emails…
+        </div>
+      ) : error ? (
+        <p className="m-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">Could not load emails: {error}</p>
+      ) : items.length === 0 ? (
+        searching ? (
+          <EmptyState title="No matches" description={`Nothing matches "${debounced}".`} />
+        ) : tab === 'scheduled' ? (
+          <EmptyState
+            title="No scheduled emails"
+            description={filter === 'all' ? 'Compose an email and upload a list of leads to schedule your first send.' : 'No emails are being held by the hourly limit.'}
+            action={
+              <Link href="/compose" className="inline-flex h-9 items-center rounded-full border border-brand-600 px-5 text-sm font-medium text-brand-600 hover:bg-brand-50">
+                Compose
+              </Link>
+            }
+          />
+        ) : (
+          <EmptyState title="Nothing sent yet" description="Sent and failed emails appear here as soon as the worker processes them." />
+        )
+      ) : (
+        <>
+          <ul className="px-2">
+            {items.map((e) => (
+              <EmailRow key={e.id} email={e} />
+            ))}
+          </ul>
+          {!searching && list.data && list.data.total > limit && (
+            <div className="flex justify-center py-5">
+              <button onClick={() => setLimit((l) => l + PAGE_SIZE)} className="rounded-full border border-gray-200 px-4 py-1.5 text-xs text-gray-600 hover:bg-surface-100">
+                Load more ({list.data.total - limit} remaining)
+              </button>
+            </div>
+          )}
+        </>
+      )}
     </div>
-  );
-}
-
-export default function DashboardPage() {
-  return (
-    <Suspense fallback={null}>
-      <Dashboard />
-    </Suspense>
   );
 }

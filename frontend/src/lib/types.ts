@@ -13,6 +13,8 @@ export interface EmailItem {
   campaignId: string;
   to: string;
   subject: string;
+  /** Plain-text snippet of the body for the inbox row. */
+  preview: string;
   status: EmailStatus;
   scheduledAt: string;
   sentAt: string | null;
@@ -21,6 +23,12 @@ export interface EmailItem {
   error: string | null;
   attempts: number;
   rateLimitedCount: number;
+}
+
+export interface EmailDetail extends EmailItem {
+  body: string; // HTML
+  fromName: string | null;
+  fromAddress: string | null;
 }
 
 export interface EmailPage {
@@ -37,7 +45,7 @@ export interface SearchResponse {
 
 export interface ScheduleRequest {
   subject: string;
-  body: string;
+  body: string; // HTML from the editor
   recipients: string[];
   startTime: string; // ISO
   delayBetweenEmailsMs: number;

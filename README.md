@@ -217,11 +217,14 @@ Bull Board is at **http://localhost:4000/admin/queues**, for logged-in users onl
 | Backend | Elasticsearch indexing + search, SQL fallback | `services/search.ts` |
 | Backend | Bull Board live dashboard | `app.ts` |
 | Backend | Slack OAuth v2, alert on limit hit, disconnect/reconnect, test message | `services/slack.ts`, `routes/slack.ts` |
-| Frontend | Real Google OAuth login, header with name, email, avatar, logout | `app/page.tsx`, `components/Header.tsx` |
-| Frontend | Scheduled / Sent tabs with counts, pagination, live refresh | `app/dashboard/page.tsx` |
-| Frontend | Compose: subject, body, CSV/text upload with detected count, start time, delay, hourly limit | `components/ComposeModal.tsx` |
-| Frontend | Loading states, empty states, error toasts | `components/ui/*` |
-| Frontend | Search box, sender hourly usage, Slack card, link to queue dashboard | `components/*` |
+| Frontend | Built to the provided Figma: login card, sidebar inbox, email detail view, full-page compose | `app/*`, `components/Sidebar.tsx` |
+| Frontend | Real Google OAuth login; user card (name, email, avatar) with logout menu | `app/page.tsx`, `components/Sidebar.tsx` |
+| Frontend | Scheduled / Sent views with live counts, search (Elasticsearch), filter, refresh, load more | `app/dashboard/page.tsx`, `components/EmailRow.tsx` |
+| Frontend | Compose: recipient chips + **Upload List** (CSV/text, count + duplicates shown), subject, delay, hourly limit, rich-text editor | `app/compose/page.tsx`, `components/RecipientInput.tsx`, `components/RichTextEditor.tsx` |
+| Frontend | **Send Later** popover: date/time picker + presets → schedules the campaign | `components/SendLaterPopover.tsx` |
+| Frontend | Email detail page: sender, recipient, delivery status, Ethereal preview link, sanitized HTML body | `app/email/[id]/page.tsx`, `lib/sanitize.ts` |
+| Frontend | Slack connect / test / disconnect and queue-dashboard link in the sidebar | `components/SlackCard.tsx` |
+| Frontend | Loading states, empty states, toasts, inline validation | `components/ui/*` |
 
 ---
 
@@ -236,13 +239,14 @@ Bull Board is at **http://localhost:4000/admin/queues**, for logged-in users onl
 - **Slack needs an HTTPS redirect**, hence the tunnel. The OAuth `state` is a signed JWT carrying the user id, because the callback comes in on the tunnel domain, which doesn't have the localhost cookie.
 - **Bull Board** is protected by the same session cookie, with no separate admin role.
 - **Polling, not WebSockets.** The dashboard refreshes every 4–5 seconds, which is simpler and enough for this scale.
-- **Figma:** the layout follows the brief: header with user info, tabs, compose modal and tables. Match spacing and colors against the provided Figma file.
+- **Figma:** the UI follows the provided Figma frames (login, inbox, detail, compose + Send Later). The email/password fields on the login card are visual only; sign-in is Google OAuth as the brief requires. Attachments (paperclip) and archive/delete on the detail page are shown but disabled - they are outside the assignment's scope.
+- **Email body is HTML** from the rich-text editor and is sent as the HTML part with a plain-text fallback; the detail view sanitizes it before rendering.
 
 ---
 
 ## 5. Demo script (≤ 5 min)
 1. Log in with Google. The header shows your name, email and avatar.
-2. **Compose:** upload `sample-leads.csv` (shows "8 emails detected · 1 duplicate removed"). Set start = now + 1 min, delay 5s, hourly limit 5, then Schedule.
+2. **Compose:** Upload List → `sample-leads.csv` ("8 emails detected · 1 duplicate removed"). Delay 5, hourly limit 5, then **Send Later → In 1 minute → Done**.
 3. The **Scheduled** tab shows the rows. Open **/admin/queues**: the jobs are under *Delayed*.
 4. **Restart:** stop the worker and API with Ctrl+C before the start time, then start both again. The emails still go out at their scheduled times, and nothing is sent twice. Check the Sent tab and the Ethereal preview links.
 5. **Rate limit:** the limit of 5 means emails 6–8 move to the next hour (marked "rate-limited"), and **Slack** receives one alert.

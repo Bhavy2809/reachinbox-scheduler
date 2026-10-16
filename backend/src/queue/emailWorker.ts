@@ -12,7 +12,7 @@ import {
 } from '../repositories/emailRepo';
 import { findSenderById } from '../repositories/senderRepo';
 import { sendEmail } from '../services/mailer';
-import { consumeHourly, firstHitInWindow, nextWindowRunAt, reserveSendSlot } from '../services/rateLimiter';
+import { consumeHourly, firstHitInWindow, nextWindowRunAt, refundHourly, reserveSendSlot } from '../services/rateLimiter';
 import { indexEmail } from '../services/search';
 import { notifySlack } from '../services/slack';
 import { EmailJobData } from '../types';
@@ -108,7 +108,10 @@ export async function processEmailJob(job: Job<EmailJobData>, token?: string): P
 
   // 5. Claim the row. If we lose, someone else is sending/has sent it - do nothing.
   const claimed = await claimForSending(email.id, sendLockTtlMs);
-  if (!claimed) return { skipped: 'claimed by another worker' };
+  if (!claimed) {
+    await refundHourly(hourly.keys); // we counted a send that we are not going to make
+    return { skipped: 'claimed by another worker' };
+  }
 
   const sender = await findSenderById(email.sender_id);
   if (!sender) {
@@ -130,6 +133,8 @@ export async function processEmailJob(job: Job<EmailJobData>, token?: string): P
     return { sent: true, messageId: result.messageId };
   } catch (err) {
     const message = (err as Error).message ?? String(err);
+    // Nothing was delivered, so give the hourly quota back before retrying.
+    await refundHourly(hourly.keys).catch(() => undefined);
     const attemptsAllowed = job.opts.attempts ?? 1;
     const isLastAttempt = job.attemptsMade + 1 >= attemptsAllowed;
     if (isLastAttempt) {

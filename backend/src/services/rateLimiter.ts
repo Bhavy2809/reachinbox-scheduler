@@ -68,7 +68,9 @@ export interface HourlyLimit {
   limit: number;
 }
 
-export type HourlyResult = { allowed: true } | { allowed: false; blockedBy: HourlyLimit; window: number };
+export type HourlyResult =
+  | { allowed: true; keys: string[] }
+  | { allowed: false; blockedBy: HourlyLimit; window: number };
 
 export async function consumeHourly(limits: HourlyLimit[], nowMs = Date.now()): Promise<HourlyResult> {
   const window = hourWindow(nowMs);
@@ -76,7 +78,7 @@ export async function consumeHourly(limits: HourlyLimit[], nowMs = Date.now()): 
   // Keep counters a bit longer than the window so late readers still see them.
   const ttl = HOUR_MS + 5 * 60 * 1000;
   const hit = Number(await redis.eval(CONSUME_HOURLY_LUA, keys.length, ...keys, ...limits.map((l) => l.limit), ttl));
-  if (hit === 0) return { allowed: true };
+  if (hit === 0) return { allowed: true, keys };
   return { allowed: false, blockedBy: limits[hit - 1], window };
 }
 
@@ -105,4 +107,22 @@ export async function firstHitInWindow(scope: string, window: number): Promise<b
 export async function getHourlyUsage(scope: string, nowMs = Date.now()): Promise<number> {
   const v = await redis.get(`ratelimit:${scope}:${hourWindow(nowMs)}`);
   return Number(v ?? 0);
+}
+
+// ---------------------------------------------------------------------------
+// 3) Refund - give the hourly quota back when the SMTP send itself failed
+// ---------------------------------------------------------------------------
+// Without this, a transient SMTP error burns quota: the retry then finds the hour
+// "full" and gets pushed to the next window even though nothing was delivered.
+const REFUND_LUA = `
+for i = 1, #KEYS do
+  local used = tonumber(redis.call('GET', KEYS[i]) or '0')
+  if used > 0 then redis.call('DECR', KEYS[i]) end
+end
+return 1
+`;
+
+export async function refundHourly(keys: string[]): Promise<void> {
+  if (keys.length === 0) return;
+  await redis.eval(REFUND_LUA, keys.length, ...keys);
 }

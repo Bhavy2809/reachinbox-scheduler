@@ -1,4 +1,5 @@
 import type {
+  EmailDetail,
   EmailPage,
   ScheduleRequest,
   ScheduleResponse,
@@ -53,6 +54,7 @@ export const api = {
 
   listEmails: (tab: Tab, page = 1, pageSize = 20) =>
     request<EmailPage>(`/api/emails?tab=${tab}&page=${page}&pageSize=${pageSize}`),
+  getEmail: (id: string) => request<EmailDetail>(`/api/emails/${encodeURIComponent(id)}`),
   search: (q: string) => request<SearchResponse>(`/api/emails/search?q=${encodeURIComponent(q)}`),
   stats: () => request<Stats>('/api/emails/stats'),
   schedule: (body: ScheduleRequest, idempotencyKey: string) =>
