@@ -20,6 +20,8 @@ export interface EmailItem {
   sentAt: string | null;
   senderId: number;
   previewUrl: string | null;
+  /** True when the host blocks SMTP and the send was simulated (SMTP_SIMULATE=true). */
+  simulated: boolean;
   error: string | null;
   attempts: number;
   rateLimitedCount: number;
@@ -72,6 +74,7 @@ export interface Stats {
   senders: SenderUsage[];
   settings: { minDelayBetweenSendsMs: number; maxEmailsPerHourPerSender: number; concurrency: number };
   searchBackend: 'elasticsearch' | 'sql';
+  smtpMode: 'ethereal' | 'simulated';
 }
 
 export interface SlackStatus {

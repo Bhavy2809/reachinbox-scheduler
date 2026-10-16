@@ -111,6 +111,11 @@ export default function EmailDetailPage() {
                 <span className="text-amber-700">Held back by the hourly limit {email.rateLimitedCount}× - still queued, not dropped.</span>
               )}
               {email.status === 'failed' && email.error && <span className="text-red-600">{email.error}</span>}
+              {email.simulated && (
+                <span className="text-gray-500">
+                  Delivery simulated - the hosting provider blocks outbound SMTP. Locally this goes through Ethereal.
+                </span>
+              )}
               {email.previewUrl && (
                 <a href={email.previewUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-medium text-brand-600 hover:underline">
                   View delivered message on Ethereal <ExternalIcon width={12} height={12} />

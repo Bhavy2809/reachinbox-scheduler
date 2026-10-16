@@ -57,6 +57,10 @@ export const config = {
     etherealAccounts: optional('ETHEREAL_ACCOUNTS'),
     smtpHost: optional('SMTP_HOST'),
     smtpPort: optional('SMTP_PORT') ? Number(optional('SMTP_PORT')) : undefined,
+    // Hosts like Railway/Render (non-Pro plans) block ALL outbound SMTP ports. When true,
+    // the worker runs the full pipeline (claim, limits, Slack) but builds the message
+    // locally instead of opening an SMTP connection. Clearly labelled "simulated" in the UI.
+    simulateSmtp: bool('SMTP_SIMULATE', false),
   },
 
   google: {

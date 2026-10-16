@@ -4,7 +4,7 @@ import { requireAuth } from '../auth/session';
 import { config } from '../config';
 import { countByStatus, findEmailById, listEmailsForUser, STATUS_GROUPS } from '../repositories/emailRepo';
 import { findSenderById, listSenders } from '../repositories/senderRepo';
-import { htmlToText } from '../services/mailer';
+import { htmlToText, SIMULATED_PREFIX } from '../services/mailer';
 import { getHourlyUsage } from '../services/rateLimiter';
 import { scheduleCampaign } from '../services/scheduler';
 import { searchBackend, searchEmails } from '../services/search';
@@ -40,6 +40,7 @@ function toDto(e: EmailRow) {
     sentAt: e.sent_at,
     senderId: e.sender_id,
     previewUrl: e.preview_url,
+    simulated: e.message_id?.startsWith(SIMULATED_PREFIX) ?? false,
     error: e.last_error,
     attempts: e.attempts,
     rateLimitedCount: e.rate_limited_count,
@@ -127,6 +128,7 @@ emailsRouter.get('/stats', async (req, res, next) => {
         concurrency: config.worker.concurrency,
       },
       searchBackend: searchBackend(),
+      smtpMode: config.senders.simulateSmtp ? 'simulated' : 'ethereal',
     });
   } catch (err) {
     next(err);

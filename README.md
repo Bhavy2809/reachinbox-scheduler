@@ -263,6 +263,7 @@ Bull Board is at **http://localhost:4000/admin/queues**, for logged-in users onl
 | Frontend (Next.js) | Vercel, root `frontend/` | `NEXT_PUBLIC_API_URL=same-origin`, `BACKEND_ORIGIN=<railway url>` |
 | API + BullMQ worker | Railway, root `backend/` | `RUN_WORKER_IN_API=true` (one always-on service; split into two services by running `npm run start:worker` separately) |
 | PostgreSQL, Redis | Railway (private network) | `DATABASE_URL=${{Postgres.DATABASE_URL}}`, `REDIS_URL=${{Redis.REDIS_URL}}`; ioredis uses `family: 0` for Railway's IPv6 network |
+| SMTP (Ethereal) | **simulated on the host** | Railway (and Render) block all outbound SMTP ports on non-Pro plans, and Ethereal only accepts SMTP on port 587. The live demo sets `SMTP_SIMULATE=true`: the worker runs the full pipeline (atomic claim, rate limits, retries, Slack alerts) and builds the MIME message in memory instead of opening an SMTP connection. Those emails are labelled **"Sent · simulated"** in the UI. Run locally (default `SMTP_SIMULATE=false`) to see real sends with Ethereal preview links; the demo video shows that path. |
 | Elasticsearch | not hosted | no free managed ES; the live demo uses the built-in SQL search fallback (ES is shown working locally in the demo video) |
 
 **One origin for the browser.** Next.js rewrites `/auth/*`, `/api/*` and `/admin/*` to the Railway backend

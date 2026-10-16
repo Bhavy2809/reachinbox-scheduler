@@ -94,6 +94,11 @@ export function Sidebar({ activeTab }: { activeTab: Tab | null }) {
       </nav>
 
       <div className="mt-auto space-y-3">
+        {stats?.smtpMode === 'simulated' && (
+          <p className="rounded-lg bg-amber-50 px-2.5 py-2 text-2xs leading-snug text-amber-800">
+            Hosted demo: this provider blocks outbound SMTP, so sends are <b>simulated</b>. Scheduling, limits and Slack are real.
+          </p>
+        )}
         {stats && (
           <div className="px-1">
             <p className="mb-2 px-1.5 text-2xs font-medium uppercase tracking-wide text-gray-400">Senders this hour</p>

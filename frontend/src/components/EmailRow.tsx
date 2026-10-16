@@ -9,7 +9,14 @@ import { ClockIcon, StarIcon } from './Icons';
 /** The pill before the subject: when it will go out, or what happened to it. */
 export function StatusPill({ email }: { email: EmailItem }) {
   if (email.status === 'sent') {
-    return <span className="shrink-0 rounded-full bg-surface-100 px-2 py-0.5 text-2xs font-medium text-gray-600">Sent</span>;
+    return (
+      <span
+        title={email.simulated ? 'Delivery simulated: this host blocks outbound SMTP' : undefined}
+        className="shrink-0 rounded-full bg-surface-100 px-2 py-0.5 text-2xs font-medium text-gray-600"
+      >
+        {email.simulated ? 'Sent · simulated' : 'Sent'}
+      </span>
+    );
   }
   if (email.status === 'failed') {
     return (

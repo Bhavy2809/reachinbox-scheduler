@@ -87,6 +87,11 @@ function transporterFor(sender: SenderRow): Transporter {
       auth: { user: sender.smtp_user, pass: sender.smtp_pass },
       pool: true,
       maxConnections: 2,
+      // Fail fast instead of nodemailer's 2-minute default, so a blocked/unreachable
+      // SMTP server turns into a retry (or 'failed') quickly rather than a long 'sending'.
+      connectionTimeout: 15_000,
+      greetingTimeout: 10_000,
+      socketTimeout: 30_000,
     });
     transporters.set(sender.id, t);
   }
@@ -113,6 +118,12 @@ export interface SendResult {
   previewUrl: string | null;
 }
 
+/** Message-ID prefix that marks a send made with SMTP_SIMULATE=true. */
+export const SIMULATED_PREFIX = 'simulated:';
+
+// Builds the full MIME message in memory; no network connection.
+const simulatedTransport = nodemailer.createTransport({ jsonTransport: true });
+
 export async function sendEmail(
   sender: SenderRow,
   msg: { emailId: string; to: string; subject: string; body: string },
@@ -121,7 +132,8 @@ export async function sendEmail(
   // Deterministic Message-ID: if a crash ever forces a resend, the receiving side sees
   // the same ID and can de-duplicate it (see README: idempotency).
   const messageId = `<email-${msg.emailId}@${domain}>`;
-  const info = await transporterFor(sender).sendMail({
+  const transport = config.senders.simulateSmtp ? simulatedTransport : transporterFor(sender);
+  const info = await transport.sendMail({
     from: `"${sender.from_name}" <${sender.smtp_user}>`,
     to: msg.to,
     subject: msg.subject,
@@ -131,6 +143,9 @@ export async function sendEmail(
       : { text: msg.body }), // plain-text bodies (e.g. load test) stay plain text
     messageId,
   });
+  if (config.senders.simulateSmtp) {
+    return { messageId: `${SIMULATED_PREFIX}${messageId}`, previewUrl: null };
+  }
   const preview = nodemailer.getTestMessageUrl(info);
   return { messageId: info.messageId ?? messageId, previewUrl: preview || null };
 }
