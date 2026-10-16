@@ -7,6 +7,30 @@ import { logger } from '../utils/logger';
 const DEFAULT_HOST = 'smtp.ethereal.email';
 const DEFAULT_PORT = 587;
 
+interface EtherealAccount {
+  user: string;
+  pass: string;
+  smtp: { host: string; port: number; secure: boolean };
+}
+
+/**
+ * Create a fresh Ethereal account through Ethereal's API.
+ * We don't use nodemailer.createTestAccount() here: it caches the first account for the
+ * whole process, so calling it 3 times returns the SAME account 3 times.
+ */
+async function createEtherealAccount(): Promise<EtherealAccount> {
+  const res = await fetch('https://api.nodemailer.com/user', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ requestor: 'reachinbox-scheduler', version: '1.0.0' }),
+  });
+  const data = (await res.json()) as Partial<EtherealAccount> & { status?: string; error?: string };
+  if (!res.ok || data.status !== 'success' || !data.user || !data.pass || !data.smtp) {
+    throw new Error(`Could not create Ethereal account: ${data.error ?? res.status}`);
+  }
+  return { user: data.user, pass: data.pass, smtp: data.smtp };
+}
+
 /**
  * Make sure we have SENDER_COUNT Ethereal accounts.
  * - ETHEREAL_ACCOUNTS="user:pass,user:pass" -> use exactly those
@@ -33,7 +57,7 @@ export async function ensureSenders(): Promise<SenderRow[]> {
   } else {
     const existing = await listSenders();
     for (let i = existing.length; i < config.senders.count; i++) {
-      const account = await nodemailer.createTestAccount();
+      const account = await createEtherealAccount();
       await insertSender({
         smtp_host: account.smtp.host,
         smtp_port: account.smtp.port,
