@@ -29,6 +29,14 @@ async function delayUntil(job: Job<EmailJobData>, token: string | undefined, tim
   throw new DelayedError();
 }
 
+/**
+ * Slack's date token renders in each reader's OWN timezone (IST for you, PST for a US teammate);
+ * the text after "|" is the fallback for clients that can't render it.
+ */
+function slackLocalTime(ms: number): string {
+  return `<!date^${Math.floor(ms / 1000)}^{date_short_pretty} at {time_secs}|${new Date(ms).toUTCString()}>`;
+}
+
 export type JobOutcome = { sent: true; messageId: string } | { skipped: string };
 
 /**
@@ -92,7 +100,7 @@ export async function processEmailJob(job: Job<EmailJobData>, token?: string): P
       await notifySlack(
         email.user_id,
         `:warning: *ReachInbox rate limit reached*\n${label} hit its limit of *${limit} emails/hour*.\n` +
-          `Remaining emails are queued, not dropped. Next send resumes at *${new Date(runAt).toUTCString()}*.`,
+          `Remaining emails are queued, not dropped. Next send resumes at *${slackLocalTime(runAt)}*.`,
       );
     }
     return delayUntil(job, token, runAt);
