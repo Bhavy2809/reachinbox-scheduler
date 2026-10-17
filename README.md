@@ -1,5 +1,7 @@
 # ReachInbox: Full-stack Email Job Scheduler
 
+[![CI](https://github.com/Bhavy2809/reachinbox-scheduler/actions/workflows/ci.yml/badge.svg)](https://github.com/Bhavy2809/reachinbox-scheduler/actions/workflows/ci.yml)
+
 **Live demo:** https://reachinbox-scheduler-xi-five.vercel.app · queue dashboard: https://reachinbox-scheduler-xi-five.vercel.app/admin/queues (after login)
 
 This service schedules emails and sends them at a set time, with a dashboard to manage them. It is built for the ReachInbox SDE intern assignment.
@@ -274,3 +276,28 @@ Bull Board is at **http://localhost:4000/admin/queues**, for logged-in users onl
 - Slack: `https://<vercel-domain>/api/slack/callback`
 
 The worker never sleeps (Railway, not a free tier that idles), because a sleeping process cannot send a scheduled email on time.
+
+---
+
+## 7. Tests
+
+Integration tests run against **real Postgres and Redis** (no mocks), using a separate database
+(`reachinbox_test`) and Redis DB index 15, so your dev data is never touched.
+
+```bash
+docker compose up -d postgres redis
+cd backend
+npm test                 # all suites
+npm test -- rateLimiter  # one suite
+```
+
+| Suite | What it proves |
+|---|---|
+| `rateLimiter.test.ts` | 200 concurrent sends vs a limit of 50 → exactly 50 allowed; multi-limit check is all-or-nothing; refunds never go below zero; per-sender send slots are spaced by the gap; overflow fills the next hour, then the one after; one Slack alert per scope per window |
+| `claim.test.ts` | 30 workers claiming one email → exactly one wins; a sent email can never be claimed again; a live lock blocks takeover, an expired lock (crashed worker) allows it; a recovered row is handed back to `scheduled` |
+| `scheduler.test.ts` | one row + one delayed job per unique recipient, spaced by the delay, round-robin senders; the same Idempotency-Key twice creates one campaign; the reconciler re-queues exactly the lost job |
+| `worker.e2e.test.ts` | through a real BullMQ worker: hourly limit 2 with 5 emails → 2 sent, 3 moved to the next hour, none failed, none sent twice; a duplicate job for a sent email is a no-op |
+
+The runner is Node's built-in `node:test` (no extra test framework). GitHub Actions
+(`.github/workflows/ci.yml`) runs the backend typecheck, build and tests against Postgres/Redis service
+containers, plus the frontend typecheck and production build, on every push.

@@ -3,7 +3,7 @@ import { createApp } from './app';
 import { config } from './config';
 import { migrate } from './db/migrate';
 import { pool } from './db/pool';
-import { emailQueue } from './queue/emailQueue';
+import { emailQueue, queueConnection } from './queue/emailQueue';
 import { createEmailWorker } from './queue/emailWorker';
 import { redis } from './redis';
 import { closeTransporters, ensureSenders } from './services/mailer';
@@ -33,6 +33,7 @@ async function main() {
     server.close();
     if (worker) await worker.close();
     await emailQueue.close();
+    await queueConnection.quit();
     closeTransporters();
     await redis.quit();
     await pool.end();

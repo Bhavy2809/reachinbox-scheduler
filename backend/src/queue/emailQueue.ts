@@ -3,8 +3,11 @@ import { QUEUE_NAME } from '../config';
 import { createRedisConnection } from '../redis';
 import { EmailJobData, EmailRow } from '../types';
 
+// BullMQ never closes a connection it was handed, so we keep a reference and close it ourselves.
+export const queueConnection = createRedisConnection('queue');
+
 export const emailQueue = new Queue<EmailJobData>(QUEUE_NAME, {
-  connection: createRedisConnection('queue'),
+  connection: queueConnection,
   defaultJobOptions: {
     // Retries are only for SMTP errors. Rate-limit waits do NOT use attempts (see worker).
     attempts: 1, // overridden per job below

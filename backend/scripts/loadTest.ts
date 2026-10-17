@@ -11,7 +11,7 @@
  */
 import { pool } from '../src/db/pool';
 import { migrate } from '../src/db/migrate';
-import { emailQueue } from '../src/queue/emailQueue';
+import { emailQueue, queueConnection } from '../src/queue/emailQueue';
 import { redis } from '../src/redis';
 import { upsertGoogleUser } from '../src/repositories/userRepo';
 import { ensureSenders } from '../src/services/mailer';
@@ -50,6 +50,7 @@ async function main() {
   );
 
   await emailQueue.close();
+  await queueConnection.quit();
   await redis.quit();
   await pool.end();
 }

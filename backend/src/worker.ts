@@ -5,7 +5,7 @@
  */
 import { migrate } from './db/migrate';
 import { pool } from './db/pool';
-import { emailQueue } from './queue/emailQueue';
+import { emailQueue, queueConnection } from './queue/emailQueue';
 import { createEmailWorker } from './queue/emailWorker';
 import { redis } from './redis';
 import { closeTransporters } from './services/mailer';
@@ -23,6 +23,7 @@ async function main() {
     logger.info(`${signal} received, letting in-flight jobs finish...`);
     await worker.close(); // waits for active jobs; delayed jobs stay safely in Redis
     await emailQueue.close();
+    await queueConnection.quit();
     closeTransporters();
     await redis.quit();
     await pool.end();

@@ -12,7 +12,8 @@
     "start:worker": "node dist/worker.js",
     "migrate": "tsx src/db/migrate.ts",
     "load-test": "tsx scripts/loadTest.ts",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node scripts/run-tests.mjs"
   },
   "dependencies": {
     "@bull-board/api": "^6.5.0",

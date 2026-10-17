@@ -149,8 +149,9 @@ export async function processEmailJob(job: Job<EmailJobData>, token?: string): P
 }
 
 export function createEmailWorker(): Worker<EmailJobData> {
+  const connection = createRedisConnection('worker');
   const worker = new Worker<EmailJobData>(QUEUE_NAME, processEmailJob, {
-    connection: createRedisConnection('worker'),
+    connection,
     concurrency: config.worker.concurrency,
     // While a job runs its lock is renewed; if the process dies, the job is picked up again
     // after the lock expires ("stalled" job), and step 5 decides whether it may resend.
@@ -162,6 +163,8 @@ export function createEmailWorker(): Worker<EmailJobData> {
     if (job) logger.warn(`Job ${job.id} failed: ${err.message}`);
   });
   worker.on('error', (err) => logger.error('Worker error', err.message));
+  // worker.close() leaves a connection we passed in open; release it once the worker is done.
+  worker.on('closed', () => void connection.quit().catch(() => undefined));
 
   logger.info(
     `Worker started: concurrency=${config.worker.concurrency}, gap=${GAP_MS}ms/sender, ` +
