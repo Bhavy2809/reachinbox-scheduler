@@ -100,6 +100,9 @@ export default function LoginPage() {
       <Suspense fallback={null}>
         <LoginCard />
       </Suspense>
+      <a href="/privacy" className="fixed bottom-4 text-2xs text-gray-400 hover:text-gray-600">
+        Privacy Policy
+      </a>
     </main>
   );
 }
